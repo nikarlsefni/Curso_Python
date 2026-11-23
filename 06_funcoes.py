@@ -24,9 +24,9 @@ while executar :
     anoAtual    = int(input("Digite o ano atual:"))
     anoNasc     = int(input("Digite o ano que voce nasceu:"))
     idade = anoAtual - anoNasc
-    print("Olá"+ nome + " voce tem " + str(idade) + " anos. ") 
+    print("Olá "+ nome + " voce tem " + str(idade) + " anos. ") 
     opcao = input("Voce deseja testar novamente? \n[1] Sim ou [2] Não?")
-if opcao == "2" or "Não" or "Não" or "Não" or "Nao" or "nao" :
+if opcao == "2" or opcao == "Não" or opcao == "Não" or opca0 == "Não" or opcao == "Nao" or opcao == "nao" :
     executar = False
 
 
