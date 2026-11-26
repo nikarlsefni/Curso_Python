@@ -1,89 +1,128 @@
-from flask import Flask, redirect, url_for, request, render_template, jsonify
-#from requests import get
 import requests
 import pandas as pd
-import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
+import random
+import sqlite3
+import datetime
+import time
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
-app = Flask(__name__)
+headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0 Safari/537.36'}
+baseURL = "https://books.toscrape.com/catalogue/page-"
 
-@app.route('/')
-def pagina_inicial():
-    return render_template('inicio.html')
+livros = []
 
+dataHoje = datetime.date.today().strftime("%d-%m-%Y")
+agora = datetime.datetime.now()
 
-@app.route('/login')
-def fazer_login():
-    return render_template('login.html')
+paginaLimite = 3
+cardTempMin = 1
+cardTempMax= 3
+pagTempMin = 2
+pagTempMax = 4
 
+bancoDeDados = "banco_filmes.db"
 
-@app.route('/pagina403')
-def pagina403():
-    return render_template('pagina403.html')
+saidaCSV = "livros_{}.csv"
 
+# ==============================================================================
+#COLETA DE DADOS
+#===============================================================================
 
-@app.route('/welcome')
-def welcome():
-    return render_template('welcome.html')
+for pagina in range(1, paginaLimite + 1):
+    url = f"{baseURL}{pagina}.html"
+    print(f"Coletando dados da pagina {pagina}:{url}")
+    resposta = requests.get(url, headers=headers,timeout=30)
+    resposta.raise_for_status()                        
+    soup = BeautifulSoup(resposta.text, "html.parser")
+    cards= soup.find_all("article", class_="product_pod")
+#que sono    
+    if not cards:
+        print("NENHUM LIVRO ENCONTRAAADO")
+        break
+    
+    for card in cards :
+        try:
+            titulo_tag = card.find("h3").find("a")
+            preco_tag = card.find("p", class_="price_color")
+            estoque_tag = card.find("p", class_="instock")
+            
+            titulo  = titulo_tag.get("title", "N/A")
+            preco   = preco_tag.get_text(strip=True)
+            estoque = estoque_tag.get_text(strip=True)
+            
+            if titulo !="N/A" :
+                livros.append({
+                    "Titulo" : titulo,
+                    "Preco"  : preco,
+                    "estoque": estoque
+                })
+                
+                print(f"Livro: {titulo}")
+                print(f"Preco:{preco}")
+                print(f"estoque:{estoque}")
+                print(f"-" * 30)
+            tempo = random.uniform(cardTempMin, cardTempMax) 
+            time.sleep(tempo)   
+        except Exception as errinho:
+            print(f"Erro ao processar o cartão: {errinho}")
+    tempo = random.uniform(pagTempMin, pagTempMax)         
+    time.sleep(tempo) 
+     
+#=======================================================================================
+#DATAFRAME E CSV
+#=======================================================================================
 
-@app.route('/validador', methods=['POST','GET'])
-def validador():
-    acesso_u = 'nicole'
-    acesso_s = '123'
-    if request.method == "POST":
-        usuario = request.form['c_usuario']
-        senha = request.form['c_senha']
-        if usuario == acesso_u and senha == acesso_s :
-            return redirect(url_for('welcome'))
-        else:
-            return redirect(url_for('pagina403'))
-    else:
-        usuario = request.args.get('c_usuario')
-        senha   = request.args.get('c_senha')
-        if usuario == acesso_u and senha == acesso_s :
-            return redirect(url_for('welcome'))
-        else:
-            return redirect(url_for('pagina403'))
+df = pd.DataFrame(livros) 
+
+print(df.head())  
+
+df.to_csv(
+    saidaCSV,
+    index=False,
+    encoding="utf-8-sig",
+    quotechar = "'",
+    quoting = 1
+) 
+
+#===============================================================================================
+#bando de dadososososoososoosososossosooosspssospsppspsp Squlite
+#=============================================================================================
+
+conn = sqlite3.connect(bancoDeDados)
+cursor = conn.cursor()
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS livros(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        Titulo TEXT,
+        Preco TEXT,
+        Estoque TEXT 
+    )          
+''')
+
+for livro in livros :
+    try:
+        cursor.execute('''
+            INSERT INTO livros (Titulo, Preco, Estoque)               
+            VALUES (?,?,?)
+        ''',    (
+                livro['Titulo'],
+                livro['Preco'],
+                livro['Estoque']
+                )
         
-@app.route('/consultar_ibge/<nome>', methods=['GET'])
-def consultar_ibge(nome):
-    url = f'https://servicodados.ibge.gov.br/api/v2/censos/nomes/{nome}'  
-    resposta = requests.get(url)
-    resposta.raise_for_status()
-    
-    dados = resposta.json()
-    
-    if not dados or not dados[0].get('res'): 
-        return jsonify({'Erro': 'Nome não encontrado!'}), 404
-    
-    df = pd.DataFrame(dados[0]['res'])
-    
-    # criando o grafico
-    fig, ax =plt.subplots(figsize=(10,5))
-    
-    ax.bar(
-        df['periodo'],
-        df['frequencia'],
-        color = 'royalblue'
-    )
-    ax.set_xlabel('Década') 
-    ax.set_ylabel(' Frequencia') 
-    ax.set_title(f'Frequencia do {nome} no Brasil')
-    
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    
-    # Convertendo o gráfico em imagem
-    img = BytesIO()
-    fig.savefig(img, format='png')
-    img.seek(0)
-    
-    grafico = base64.b64encode(img.getvalue()).decode("utf-8")
-    plt.close(fig)
-    
-    return f'<h1>Consulta IBGE: {nome}</h1><img src="data:image/png;base64, {grafico}">'
-           
-    
-if __name__ == '__main__':
-    app.run(debug=True)
+        ) 
+    except Exception as e:
+        print(f"Erro {e} ao inserir o livro{livro['Titulo']}")
+conn.commit()
+conn.close()                                   
+              
+fim = datetime.datetime.now()
+
+print('-' * 30)
+print('Dados coletados e salvos com sucesso')
+print(f'Total de livros: {len(livros)}')
+print(f'Arquivos salvo em: {saidaCSV}')
+print(f'Inicio: {agora.strftime('%H:%M:%S')}')
+print(f'fim: {fim.strftime('%H:%M:%S')}')
+print('-' * 30)
